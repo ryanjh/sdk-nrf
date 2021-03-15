@@ -394,6 +394,103 @@ static void test_run(void)
 	}
 }
 
+#if 1
+#include <nrf_rpc.h>
+
+#include <tinycbor/cbor.h>
+#include <nrf_rpc_cbor.h>
+
+/* Helper define holding maximum CBOR encoded packet length
+ * for this sample.
+ */
+#define MAX_ENCODED_LEN 16
+
+/* Defines a group that contains functions implemented in this
+ * sample.
+ */
+NRF_RPC_GROUP_DEFINE(math_group, "sample_math", NULL, NULL, NULL);
+
+/* Defines a helper structure to pass the results.
+ */
+struct remote_inc_result {
+        int err;
+        int output;
+};
+
+static void remote_inc_rsp(CborValue *value, void *handler_data)
+{
+        CborError cbor_err;
+        struct remote_inc_result *result =
+                (struct remote_inc_result *)handler_data;
+
+        if (!cbor_value_is_integer(value)) {
+                result->err = -NRF_EINVAL;
+                return;
+        }
+
+        cbor_err = cbor_value_get_int(value, &result->output);
+        if (cbor_err != CborNoError) {
+                result->err = -NRF_EINVAL;
+                return;
+        }
+
+        result->err = 0;
+}
+
+enum rpc_command {
+	MATH_COMMAND_INC = 0x01,
+};
+
+int remote_inc(int input, int *output)
+{
+        int err = 0;
+        struct remote_inc_result result;
+        struct nrf_rpc_cbor_ctx ctx;
+
+        NRF_RPC_CBOR_ALLOC(ctx, MAX_ENCODED_LEN);
+
+        cbor_encode_int(&ctx.encoder, input);
+
+        err = nrf_rpc_cbor_cmd(&math_group, MATH_COMMAND_INC, &ctx,
+                               remote_inc_rsp, &result);
+
+        if (err == 0) {
+                *output = result.output;
+                err = result.err;
+        }
+
+        return err;
+}
+#endif
+
+#include <init.h>
+static void err_handler(const struct nrf_rpc_err_report *report)
+{
+	printk("nRF RPC error %d ocurred. See nRF RPC logs for more details.",
+	       report->code);
+	k_oops();
+}
+static int serialization_init(const struct device *dev)
+{
+	ARG_UNUSED(dev);
+
+	int err;
+
+	printk("Init begin [APP]\n");
+
+	err = nrf_rpc_init(err_handler);
+	if (err) {
+		return -NRF_EINVAL;
+	}
+
+	printk("Init done [APP]\n");
+
+	return 0;
+}
+
+
+SYS_INIT(serialization_init, POST_KERNEL, CONFIG_APPLICATION_INIT_PRIORITY);
+
 void main(void)
 {
 	int err;
@@ -436,7 +533,12 @@ void main(void)
 		return;
 	}
 
-	advertise_and_scan();
+	// advertise_and_scan();
+#if 1
+	int output = 0;
+	remote_inc(10, &output);
+	printk("remote_inc: output %d\n", output);
+#endif
 
 	if (enable_qos_conn_evt_report()) {
 		printk("Enable LLPM QoS failed.\n");
