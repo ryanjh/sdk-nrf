@@ -1,0 +1,6 @@
+{
+	"description": "Software development kit for building cellular IoT, Bluetooth Low Energy, Thread and Zigbee products",
+	"name": "framework-nrfconnect",
+	"url": "http://developer.nordicsemi.com/nRF_Connect_SDK/doc/latest/nrf/",
+	"version": "v1.5.1"
+}
