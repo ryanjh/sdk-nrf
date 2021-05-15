@@ -193,6 +193,22 @@ def get_zephyr_modules():
             )
         ]
 
+def get_ncs_modules():
+    NCS_DIR = platform.get_package_dir("framework-nrfconnect")
+    west_config = os.path.join(NCS_DIR, "west.yml")
+    if not os.path.isfile(west_config):
+        sys.stderr.write("Error: Couldn't find 'west.yml'\n")
+        env.Exit(1)
+
+    with open(west_config) as fp:
+        config = list(yaml.load_all(fp, Loader=yaml.FullLoader))[0]
+        return [
+            m
+            for m in config["manifest"]["projects"]
+            if not m["path"].startswith(
+                ("tools", "modules/bsim_hw_models", "modules/hal")
+            )
+        ]
 
 def run_cmake():
     print("Reading CMake configuration...")
@@ -221,9 +237,18 @@ def run_cmake():
             click.parser.split_arg_string(board.get("build.zephyr.cmake_extra_args"))
         )
 
-    zephyr_modules = []
+    zephyr_modules = [platform.get_package_dir("framework-nrfconnect")]
     for m in get_zephyr_modules():
         module_name = "framework-zephyr-" + m["name"].replace("_", "-")
+        try:
+            module_path = platform.get_package_dir(module_name)
+        except KeyError:
+            print("Warning! Missing Zephyr module " + module_name)
+            continue
+        zephyr_modules.append(module_path)
+
+    for m in get_ncs_modules():
+        module_name = "framework-nrfconnect-" + m["name"].replace("_", "-")
         try:
             module_path = platform.get_package_dir(module_name)
         except KeyError:
