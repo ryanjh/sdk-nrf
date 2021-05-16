@@ -35,7 +35,7 @@ def ZephyrBuildProgram(env):
 
     program_pre = env.Program(
         os.path.join("$BUILD_DIR", "firmware-pre"), env["PIOBUILDFILES"],
-        LDSCRIPT_PATH=os.path.join("$BUILD_DIR", "zephyr", "linker.cmd")
+        LDSCRIPT_PATH=os.path.join("$BUILD_DIR", "zephyr", "linker_zephyr_prebuilt.cmd")
     )
 
     # Force execution of offset header target before compiling project sources
@@ -45,7 +45,7 @@ def ZephyrBuildProgram(env):
     program = env.Program(
         os.path.join("$BUILD_DIR", env.subst("$PROGNAME")),
         env["PIOBUILDFILES"] + env["_EXTRA_ZEPHYR_PIOBUILDFILES"],
-        LDSCRIPT_PATH=os.path.join("$BUILD_DIR", "zephyr", "linker_pass_final.cmd")
+        LDSCRIPT_PATH=os.path.join("$BUILD_DIR", "zephyr", "linker.cmd")
     )
 
     env.Replace(PIOMAINPROG=program)

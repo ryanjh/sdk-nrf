@@ -49,8 +49,8 @@ except ImportError:
 platform = env.PioPlatform()
 board = env.BoardConfig()
 
-FRAMEWORK_DIR = platform.get_package_dir("framework-zephyr")
-FRAMEWORK_VERSION = platform.get_package_version("framework-zephyr")
+FRAMEWORK_DIR = platform.get_package_dir("framework-nrfconnect-zephyr")
+FRAMEWORK_VERSION = platform.get_package_version("framework-nrfconnect-zephyr")
 assert os.path.isdir(FRAMEWORK_DIR)
 
 BUILD_DIR = env.subst("$BUILD_DIR")
@@ -538,7 +538,7 @@ def get_linkerscript_final_cmd(app_config, base_ld_script):
     cmd.extend(['-I"%s"' % inc for inc in includes["plain_includes"]])
 
     return env.Command(
-        os.path.join("$BUILD_DIR", "zephyr", "linker_pass_final.cmd"),
+        os.path.join("$BUILD_DIR", "zephyr", "linker.cmd"),
         base_ld_script,
         env.VerboseAction(" ".join(cmd), "Generating final linker script $TARGET"),
     )
@@ -581,7 +581,7 @@ def get_linkerscript_cmd(app_config, base_ld_script):
     cmd.extend(['-I"%s"' % inc for inc in includes["plain_includes"]])
 
     return env.Command(
-        os.path.join("$BUILD_DIR", "zephyr", "linker.cmd"),
+        os.path.join("$BUILD_DIR", "zephyr", "linker_zephyr_prebuilt.cmd"),
         base_ld_script,
         env.VerboseAction(" ".join(cmd), "Generating linker script $TARGET"),
     )
@@ -675,7 +675,7 @@ def compile_source_files(config, default_env, project_src_dir, prepend_dir=None)
                 local_path = os.path.join(project_src_dir, config["paths"]["source"])
             obj_path_temp = os.path.join(
                 "$BUILD_DIR",
-                prepend_dir or config["name"].replace("framework-zephyr", ""),
+                prepend_dir or config["name"].replace("framework-nrfconnect-zephyr", ""),
                 config["paths"]["build"],
             )
             if src_path.startswith(local_path):
@@ -777,7 +777,7 @@ def extract_link_args(target_config):
                 if lib_path not in link_args["LIBPATH"]:
                     link_args["LIBPATH"].append(os.path.dirname(fragment))
                 link_args["LIBS"].extend(
-                    [os.path.basename(l) for l in args if l.endswith(".a")]
+                    ['-l'+os.path.basename(l).replace("lib", "")[:-2] for l in args if l.endswith(".a")]
                 )
             elif fragment.endswith(".a"):
                 link_args["__LIB_DEPS"].extend(
@@ -838,6 +838,23 @@ def generate_isr_table_file_cmd(preliminary_elf, board_config):
 
     return cmd
 
+def generate_handles_file_cmd(preliminary_elf):
+    cmd = [
+        "$PYTHONEXE",
+        '"%s"' % os.path.join(FRAMEWORK_DIR, "scripts", "gen_handles.py"),
+        "--output-source",
+        "$TARGET",
+        "--kernel",
+        "${SOURCES[0]}",
+        "--zephyr-base",
+        FRAMEWORK_DIR,
+    ]
+
+    return env.Command(
+        os.path.join("$BUILD_DIR", "zephyr", "dev_handles.c"),
+        preliminary_elf,
+        env.VerboseAction(" ".join(cmd), "Generating dev_handles $TARGET"),
+    )
 
 def generate_offset_header_file_cmd():
     cmd = [
@@ -1034,6 +1051,8 @@ for dep in (offsets_lib, preliminary_ld_script):
 
 isr_table_file = generate_isr_table_file_cmd(preliminary_elf_path, board)
 
+handles_file = generate_handles_file_cmd(preliminary_elf_path)
+
 #
 # Final firmware targets
 #
@@ -1077,7 +1096,7 @@ link_args = extract_link_args(prebuilt_config)
 
 # remove the main linker script flags '-T linker.cmd'
 try:
-    ld_index = link_args["LINKFLAGS"].index("linker.cmd")
+    ld_index = link_args["LINKFLAGS"].index("linker_zephyr_prebuilt.cmd")
     link_args["LINKFLAGS"].pop(ld_index)
     link_args["LINKFLAGS"].pop(ld_index - 1)
 except:
