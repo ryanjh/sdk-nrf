@@ -1052,8 +1052,124 @@ void bt_ctlr_set_public_addr(const uint8_t *addr)
 	(void)sdc_hci_cmd_vs_zephyr_write_bd_addr(bd_addr);
 }
 
+#if defined(NRF52_SERIES)
+static inline void gpio_cfg_output(uint32_t pin_num)
+{
+  NRF_P0->PIN_CNF[pin_num] =
+      ((uint32_t)GPIO_PIN_CNF_DIR_Output       << GPIO_PIN_CNF_DIR_Pos)
+    | ((uint32_t)GPIO_PIN_CNF_INPUT_Disconnect << GPIO_PIN_CNF_INPUT_Pos)
+    | ((uint32_t)GPIO_PIN_CNF_PULL_Disabled    << GPIO_PIN_CNF_PULL_Pos)
+    | ((uint32_t)GPIO_PIN_CNF_DRIVE_S0S1       << GPIO_PIN_CNF_DRIVE_Pos)
+    | ((uint32_t)GPIO_PIN_CNF_SENSE_Disabled   << GPIO_PIN_CNF_SENSE_Pos);
+}
+
+static inline void ppi_cfg(uint32_t ppi_ch, volatile uint32_t * event, volatile uint32_t * task)
+{
+  NRF_PPI->CH[ppi_ch].TEP = (uint32_t)(task);
+  NRF_PPI->CH[ppi_ch].EEP = (uint32_t)(event);
+  NRF_PPI->CHENSET = (1 << ppi_ch);
+}
+
+static inline void gpiote_cfg(uint32_t pin, uint32_t gpiote_ch, uint32_t mode, uint32_t polarity)
+{
+  NRF_GPIOTE->CONFIG[gpiote_ch] =
+    (polarity                 << GPIOTE_CONFIG_POLARITY_Pos) |
+#ifdef NRF52840_XXAA
+    (0                        << GPIOTE_CONFIG_PORT_Pos)     |
+#endif
+    (pin                      << GPIOTE_CONFIG_PSEL_Pos)     |
+    (mode                     << GPIOTE_CONFIG_MODE_Pos)     |
+    (0                        << GPIOTE_CONFIG_OUTINIT_Pos);
+}
+
+static inline void gpio_set_clr_on_events(uint32_t pin,
+                                          uint32_t gpiote_ch,
+                                          uint32_t ppi_ch_for_set,
+                                          uint32_t ppi_ch_for_clr,
+                                          volatile uint32_t * event_set,
+                                          volatile uint32_t * event_clr)
+{
+  gpio_cfg_output(pin);
+  ppi_cfg(ppi_ch_for_set, event_set, &NRF_GPIOTE->TASKS_SET[gpiote_ch]);
+  ppi_cfg(ppi_ch_for_clr, event_clr, &NRF_GPIOTE->TASKS_CLR[gpiote_ch]);
+  gpiote_cfg(pin, gpiote_ch, GPIOTE_CONFIG_MODE_Task, GPIOTE_CONFIG_POLARITY_None);
+}
+
+#include <helpers/nrfx_gppi.h>
+#include <nrfx_gpiote.h>
+
+static inline void pin_toggling_on_RADIO_READY_DISABLED(void)
+{
+	static uint8_t set_channel;
+	static uint8_t clear_channel;
+	static uint8_t gpiote_channel;
+	const uint32_t RADIO_PIN = 28;
+
+
+	nrfx_ppi_channel_alloc(&set_channel);
+	nrfx_ppi_channel_alloc(&clear_channel);
+	nrfx_gpiote_channel_alloc(&gpiote_channel);
+
+	uint32_t RADIO_GPIOTE = gpiote_channel;
+  	uint32_t RADIO_PPI_CH_SET = set_channel;
+  	uint32_t RADIO_PPI_CH_CLR = clear_channel;
+
+	// gpio_set_clr_on_events(RADIO_PIN,
+	// 						RADIO_GPIOTE,
+	// 						RADIO_PPI_CH_SET,
+	// 						RADIO_PPI_CH_CLR,
+	// 						&NRF_RADIO->EVENTS_READY,
+	// 						&NRF_RADIO->EVENTS_DISABLED);
+	gpio_set_clr_on_events(RADIO_PIN,
+							RADIO_GPIOTE,
+							RADIO_PPI_CH_SET,
+							RADIO_PPI_CH_CLR,
+							&NRF_RADIO->EVENTS_TXREADY,
+							&NRF_RADIO->EVENTS_DISABLED);
+}
+
+static inline void pin_toggling_on_RADIO_ADDR_END(void)
+{
+	static uint8_t set_channel;
+	static uint8_t clear_channel;
+	static uint8_t gpiote_channel;
+	const uint32_t RADIO_PIN = 29;
+
+
+	nrfx_ppi_channel_alloc(&set_channel);
+	nrfx_ppi_channel_alloc(&clear_channel);
+	nrfx_gpiote_channel_alloc(&gpiote_channel);
+
+	uint32_t RADIO_GPIOTE = gpiote_channel;
+  	uint32_t RADIO_PPI_CH_SET = set_channel;
+  	uint32_t RADIO_PPI_CH_CLR = clear_channel;
+
+	// gpio_set_clr_on_events(RADIO_PIN,
+	// 						RADIO_GPIOTE,
+	// 						RADIO_PPI_CH_SET,
+	// 						RADIO_PPI_CH_CLR,
+	// 						&NRF_RADIO->EVENTS_ADDRESS,
+	// 						&NRF_RADIO->EVENTS_END);
+	gpio_set_clr_on_events(RADIO_PIN,
+							RADIO_GPIOTE,
+							RADIO_PPI_CH_SET,
+							RADIO_PPI_CH_CLR,
+							&NRF_RADIO->EVENTS_RXREADY,
+							&NRF_RADIO->EVENTS_DISABLED);
+}
+#endif
+
 static int hci_driver_init(void)
 {
+#if defined(NRF52_SERIES)
+	gpio_cfg_output(3);
+	gpio_cfg_output(4);
+	gpio_cfg_output(28);
+	gpio_cfg_output(29);
+
+	pin_toggling_on_RADIO_READY_DISABLED();
+	pin_toggling_on_RADIO_ADDR_END();
+#endif
 	int err = 0;
 
 	bt_hci_driver_register(&drv);
